@@ -1,17 +1,22 @@
-﻿using Dataweb.NShape;
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Windows.Forms;
+
+using Dataweb.NShape;
 using Dataweb.NShape.Advanced;
 using Dataweb.NShape.GeneralShapes;
 using Dataweb.NShape.Layouters;
 
+using JsonEditorForm;
+
 using JsonPathParserLib;
 
 using Newtonsoft.Json;
-
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Windows.Forms;
 
 namespace StatesDiagram
 {
@@ -105,6 +110,16 @@ namespace StatesDiagram
             }
         }
 
+        public struct WinPosition
+        {
+            public int WinX;
+            public int WinY;
+            public int WinW;
+            public int WinH;
+
+            [JsonIgnore] public bool Initialized => !(WinX <= 0 && WinY <= 0 && WinW <= 0 && WinH <= 0);
+        }
+
         // diagram settings
         private string _currentDiagramName = "Sample Diagram";
         private const string _shapeType = "RoundedBox"; //"RoundedBox", "Ellipse"
@@ -120,11 +135,20 @@ namespace StatesDiagram
         private Dictionary<string, RectangleBase> _shapeDict = new Dictionary<string, RectangleBase>();
 
         // JSON parser settings
-        private const string RootName = "<root>";
+        private JsonPathParser _parser = new JsonPathParser();
+        private const string RootName = "";
         private const char _pathDivider = '.';
 
         // graph structure storege for JSON export
         private DiagramExport _diagramJson = new DiagramExport();
+
+        // Json viewer window
+        private JsonViewer _sideViewer;
+        private const string PreViewCaption = "JSON File ";
+        private bool _useVsCode = false;
+        private bool _singleLineBrackets = false;
+        private WinPosition _editorPosition;
+        private bool _showPreview = true;
 
         // initial diagram and shapes settings
         private const int _initX = 50;
@@ -151,25 +175,21 @@ namespace StatesDiagram
             textBox_sizeY.Text = diagramHeight.ToString();
 
             CheckBox_useV1_CheckedChanged(this, EventArgs.Empty);
-        }
 
-        private void Button_export_Click(object sender, EventArgs e)
-        {
-            try
+            checkBox_useVsCode.Checked = _useVsCode = Properties.Settings.Default.UseVsCode;
+            CheckBox_useVsCode_CheckedChanged(this, EventArgs.Empty);
+
+            checkBox_ShowPreview.Checked = _showPreview = Properties.Settings.Default.ShowPreview;
+            CheckBox_ShowPreview_CheckedChanged(this, EventArgs.Empty);
+
+            _parser = new JsonPathParser
             {
-                display1.Diagram.CreateImage(ImageFileFormat.Jpeg).Save(_currentDiagramName + ".jpg");
-                File.WriteAllText(_currentDiagramName + ".json", JsonConvert.SerializeObject(_diagramJson, Formatting.Indented));
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
-
-        }
-
-        private void Button_RefreshLayout_Click(object sender, EventArgs e)
-        {
-            RefreshLayout();
+                TrimComplexValues = false,
+                SaveComplexValues = true,
+                RootName = RootName,
+                JsonPathDivider = _pathDivider,
+                SearchStartOnly = true
+            };
         }
 
         private void Button_loadStates_Click(object sender, EventArgs e)
@@ -185,20 +205,12 @@ namespace StatesDiagram
                 "*.json",
                 SearchOption.AllDirectories);
 
-            var parser = new JsonPathParser
-            {
-                TrimComplexValues = false,
-                SaveComplexValues = true,
-                RootName = RootName,
-                JsonPathDivider = _pathDivider
-            };
-
             var states = new List<ParsedState>();
             _shapeDict.Clear();
             _diagramJson = new DiagramExport();
             foreach (var file in filesList)
             {
-                var newPathList = ParseJson(file, parser);
+                var newPathList = ParseJson(file, _parser);
 
                 if (newPathList == null)
                     continue;
@@ -254,6 +266,79 @@ namespace StatesDiagram
             }
         }
 
+        private void Button_load_Click(object sender, EventArgs e)
+        {
+            openFileDialog1.FileName = "";
+            openFileDialog1.Title = "Open NSPJ file";
+            openFileDialog1.DefaultExt = "nspj";
+            openFileDialog1.Filter = "NSPJ files|*.nspj|All files|*.*";
+            openFileDialog1.ShowDialog();
+        }
+
+        private void OpenFileDialog1_FileOk(object sender, CancelEventArgs e)
+        {
+            var i = new FileInfo(openFileDialog1.FileName);
+
+            project1.Close();
+            project1.RemoveAllLibraries();
+            project1.LibrarySearchPaths.Clear();
+
+            // Set path to the sample diagram and the diagram file extension
+            xmlStore1.DirectoryName = i.Directory.FullName;
+            xmlStore1.FileExtension = i.Extension;
+            // Set the name of the project that should be loaded from the store
+            project1.Name = i.Name.Replace(i.Extension, "");
+            project1.LibrarySearchPaths.Add(@".");
+            project1.AutoLoadLibraries = true;
+            // Open the NShape project
+            try
+            {
+                project1.Open();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+
+            // Load the diagram and display it
+            var d = project1.Repository.GetDiagrams().FirstOrDefault();
+            display1.LoadDiagram(d.Name);
+
+            display1.ZoomWithMouseWheel = true;
+            display1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+
+            display1.ActiveTool = new SelectionTool();
+        }
+
+        private void Button_export_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                display1.Diagram.CreateImage(ImageFileFormat.Jpeg).Save(_currentDiagramName + ".jpg");
+                File.WriteAllText(_currentDiagramName + ".json", JsonConvert.SerializeObject(_diagramJson, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+
+            MessageBox.Show($"Diagram exported to \"{_currentDiagramName}.jpg/json\" .");
+        }
+
+        private void Button_RefreshLayout_Click(object sender, EventArgs e)
+        {
+            RefreshLayout();
+        }
+
+        private void Display1_ShapeClick(object sender, Dataweb.NShape.Controllers.DiagramPresenterShapeClickEventArgs e)
+        {
+            if (e?.Shape?.Tag != null && e?.Shape?.Tag is ShapeTag t)
+            {
+                textBox_tag.Text = t.ToString();
+                if (_showPreview) ShowPreviewEditor(t.FileName, t.JsonPath, false);
+            }
+        }
+
         private void TextBox_sizeX_Leave(object sender, EventArgs e)
         {
             if (!string.IsNullOrEmpty(textBox_sizeX.Text) && int.TryParse(textBox_sizeX.Text, out diagramWidth))
@@ -280,16 +365,47 @@ namespace StatesDiagram
             textBox_sizeY.Text = diagramHeight.ToString();
         }
 
-        private void Display1_ShapeClick(object sender, Dataweb.NShape.Controllers.DiagramPresenterShapeClickEventArgs e)
-        {
-            if (e?.Shape?.Tag != null && e?.Shape?.Tag is ShapeTag t)
-                textBox_tag.Text = t.ToString();
-        }
-
         private void CheckBox_useV1_CheckedChanged(object sender, EventArgs e)
         {
             Properties.Settings.Default.useV1 = checkBox_useV1.Checked;
             checkBox_useV1.Text = checkBox_useV1.Checked ? "SHELF JSON" : "NLMK JSON";
+        }
+
+        private void OnClosingEditor(object sender, CancelEventArgs e)
+        {
+            if (sender is Form s)
+            {
+                _editorPosition.WinX = s.Location.X;
+                _editorPosition.WinY = s.Location.Y;
+                _editorPosition.WinW = s.Width;
+                _editorPosition.WinH = s.Height;
+            }
+        }
+
+        private void OnResizeEditor(object sender, EventArgs e)
+        {
+            if (sender is Form s)
+            {
+                _editorPosition.WinX = s.Location.X;
+                _editorPosition.WinY = s.Location.Y;
+                _editorPosition.WinW = s.Width;
+                _editorPosition.WinH = s.Height;
+            }
+        }
+
+        private void CheckBox_ShowPreview_CheckedChanged(object sender, EventArgs e)
+        {
+            Properties.Settings.Default.ShowPreview = _showPreview = checkBox_ShowPreview.Checked;
+
+            if (!_showPreview)
+                checkBox_useVsCode.Checked = false;
+
+            checkBox_useVsCode.Enabled = _showPreview;
+        }
+
+        private void CheckBox_useVsCode_CheckedChanged(object sender, EventArgs e)
+        {
+            Properties.Settings.Default.UseVsCode = _useVsCode = checkBox_useVsCode.Checked;
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
@@ -697,6 +813,138 @@ namespace StatesDiagram
             layouter.Fit(_initX, _initY, display1.Diagram.Width - _initW - _initX, display1.Diagram.Height - _initH - _initY);
         }
 
+        private void ShowPreviewEditor(string longFileName,
+            string jsonPath,
+            bool standAloneEditor = false)
+        {
+            if (_useVsCode)
+            {
+                var lineNumber = GetLineNumberForPath(longFileName, jsonPath);
+                var execParams = "-r -g " + longFileName + ":" + lineNumber;
+                VsCodeOpenFile(execParams);
+
+                return;
+            }
+
+            var textEditor = _sideViewer;
+            if (standAloneEditor) textEditor = null;
+
+            var fileLoaded = false;
+            var newWindow = false;
+            if (textEditor != null && !textEditor.IsDisposed)
+            {
+                if (textEditor.SingleLineBrackets != _singleLineBrackets ||
+                    textEditor.Text != PreViewCaption + longFileName)
+                {
+                    textEditor.SingleLineBrackets = _singleLineBrackets;
+                    fileLoaded = textEditor.LoadJsonFromFile(longFileName);
+                }
+                else
+                {
+                    fileLoaded = true;
+                }
+            }
+            else
+            {
+                if (textEditor != null)
+                {
+                    textEditor.Close();
+                    textEditor.Dispose();
+                }
+
+                textEditor = new JsonViewer("", "", standAloneEditor)
+                {
+                    SingleLineBrackets = _singleLineBrackets
+                };
+
+                newWindow = true;
+                fileLoaded = textEditor.LoadJsonFromFile(longFileName);
+            }
+
+            if (!standAloneEditor)
+                _sideViewer = textEditor;
+
+            textEditor.AlwaysOnTop = false;
+            textEditor.Show();
+
+
+            if (!standAloneEditor && newWindow)
+            {
+                if (!(_editorPosition.WinX == 0
+                      && _editorPosition.WinY == 0
+                      && _editorPosition.WinW == 0
+                      && _editorPosition.WinH == 0))
+                {
+                    textEditor.Location = new Point(_editorPosition.WinX, _editorPosition.WinY);
+                    textEditor.Width = _editorPosition.WinW;
+                    textEditor.Height = _editorPosition.WinH;
+                }
+
+                textEditor.Closing += OnClosingEditor;
+                textEditor.ResizeEnd += OnResizeEditor;
+            }
+
+            if (!fileLoaded)
+            {
+                textEditor.Text = "Failed to load " + longFileName;
+                return;
+            }
+
+            if (!standAloneEditor)
+                textEditor.Text = PreViewCaption + longFileName;
+            else
+                textEditor.Text = longFileName;
+
+            textEditor.HighlightPathJson(jsonPath);
+        }
+
+        private void VsCodeOpenFile(string command)
+        {
+            var processInfo = new ProcessStartInfo("code", command)
+            {
+                CreateNoWindow = true,
+                UseShellExecute = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            };
+
+            try
+            {
+                Process.Start(processInfo);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+        }
+
+        private int GetLineNumberForPath(string longFileName, string jsonPath)
+        {
+            string jsonStr;
+            try
+            {
+                jsonStr = File.ReadAllText(longFileName);
+            }
+            catch
+            {
+                return 0;
+            }
+
+            if (string.IsNullOrEmpty(jsonStr))
+                return 0;
+
+            var startLine = 0;
+            var property = _parser.SearchJsonPath(jsonStr, jsonPath);
+            _parser.SearchStartOnly = true;
+
+            if (property != null)
+            {
+                JsonPathParser.GetLinesNumber(jsonStr, property.StartPosition, property.EndPosition, out startLine,
+                    out var _);
+            }
+
+            return startLine;
+        }
+
         private static string TrimPathEnd(string originalPath, int levels, char pathDivider)
         {
             for (; levels > 0; levels--)
@@ -713,49 +961,5 @@ namespace StatesDiagram
             return originalPath;
         }
         #endregion
-
-        private void Button_load_Click(object sender, EventArgs e)
-        {
-            openFileDialog1.FileName = "";
-            openFileDialog1.Title = "Open NSPJ file";
-            openFileDialog1.DefaultExt = "nspj";
-            openFileDialog1.Filter = "NSPJ files|*.nspj|All files|*.*";
-            openFileDialog1.ShowDialog();
-        }
-
-        private void OpenFileDialog1_FileOk(object sender, System.ComponentModel.CancelEventArgs e)
-        {
-            var i = new FileInfo(openFileDialog1.FileName);
-
-            project1.Close();
-            project1.RemoveAllLibraries();
-            project1.LibrarySearchPaths.Clear();
-
-            // Set path to the sample diagram and the diagram file extension
-            xmlStore1.DirectoryName = i.Directory.FullName;
-            xmlStore1.FileExtension = i.Extension;
-            // Set the name of the project that should be loaded from the store
-            project1.Name = i.Name.Replace(i.Extension, "");
-            project1.LibrarySearchPaths.Add(@".");
-            project1.AutoLoadLibraries = true;
-            // Open the NShape project
-            try
-            {
-                project1.Open();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
-
-            // Load the diagram and display it
-            var d = project1.Repository.GetDiagrams().FirstOrDefault();
-            display1.LoadDiagram(d.Name);
-
-            display1.ZoomWithMouseWheel = true;
-            display1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-
-            display1.ActiveTool = new SelectionTool();
-        }
     }
 }

@@ -70,5 +70,29 @@ namespace StatesDiagram.Properties {
                 this["SizeY"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ShowPreview {
+            get {
+                return ((bool)(this["ShowPreview"]));
+            }
+            set {
+                this["ShowPreview"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool UseVsCode {
+            get {
+                return ((bool)(this["UseVsCode"]));
+            }
+            set {
+                this["UseVsCode"] = value;
+            }
+        }
     }
 }

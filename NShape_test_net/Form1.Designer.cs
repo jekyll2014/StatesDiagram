@@ -33,6 +33,8 @@ namespace StatesDiagram
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             Dataweb.NShape.RoleBasedSecurityManager roleBasedSecurityManager1 = new Dataweb.NShape.RoleBasedSecurityManager();
             this.display1 = new Dataweb.NShape.WinFormsUI.Display();
+            this.checkBox_ShowPreview = new System.Windows.Forms.CheckBox();
+            this.checkBox_useVsCode = new System.Windows.Forms.CheckBox();
             this.label3 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
             this.checkBox_useV1 = new System.Windows.Forms.CheckBox();
@@ -61,6 +63,8 @@ namespace StatesDiagram
             // 
             this.display1.AllowDrop = true;
             this.display1.BackColorGradient = System.Drawing.SystemColors.Control;
+            this.display1.Controls.Add(this.checkBox_ShowPreview);
+            this.display1.Controls.Add(this.checkBox_useVsCode);
             this.display1.Controls.Add(this.label3);
             this.display1.Controls.Add(this.label2);
             this.display1.Controls.Add(this.checkBox_useV1);
@@ -93,6 +97,32 @@ namespace StatesDiagram
             this.display1.ToolPreviewBackColor = System.Drawing.Color.FromArgb(((int)(((byte)(64)))), ((int)(((byte)(119)))), ((int)(((byte)(136)))), ((int)(((byte)(153)))));
             this.display1.ToolPreviewColor = System.Drawing.Color.FromArgb(((int)(((byte)(96)))), ((int)(((byte)(70)))), ((int)(((byte)(130)))), ((int)(((byte)(180)))));
             this.display1.ShapeClick += new System.EventHandler<Dataweb.NShape.Controllers.DiagramPresenterShapeClickEventArgs>(this.Display1_ShapeClick);
+            // 
+            // checkBox_ShowPreview
+            // 
+            this.checkBox_ShowPreview.AutoSize = true;
+            this.checkBox_ShowPreview.Checked = true;
+            this.checkBox_ShowPreview.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.checkBox_ShowPreview.Location = new System.Drawing.Point(12, 183);
+            this.checkBox_ShowPreview.Name = "checkBox_ShowPreview";
+            this.checkBox_ShowPreview.Size = new System.Drawing.Size(93, 17);
+            this.checkBox_ShowPreview.TabIndex = 18;
+            this.checkBox_ShowPreview.Text = "Show preview";
+            this.checkBox_ShowPreview.UseVisualStyleBackColor = true;
+            this.checkBox_ShowPreview.CheckedChanged += new System.EventHandler(this.CheckBox_ShowPreview_CheckedChanged);
+            // 
+            // checkBox_useVsCode
+            // 
+            this.checkBox_useVsCode.AutoSize = true;
+            this.checkBox_useVsCode.Checked = true;
+            this.checkBox_useVsCode.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.checkBox_useVsCode.Location = new System.Drawing.Point(12, 206);
+            this.checkBox_useVsCode.Name = "checkBox_useVsCode";
+            this.checkBox_useVsCode.Size = new System.Drawing.Size(87, 17);
+            this.checkBox_useVsCode.TabIndex = 18;
+            this.checkBox_useVsCode.Text = "Use VSCode";
+            this.checkBox_useVsCode.UseVisualStyleBackColor = true;
+            this.checkBox_useVsCode.CheckedChanged += new System.EventHandler(this.CheckBox_useVsCode_CheckedChanged);
             // 
             // label3
             // 
@@ -170,7 +200,7 @@ namespace StatesDiagram
             // 
             this.button_loadStates.Location = new System.Drawing.Point(12, 12);
             this.button_loadStates.Name = "button_loadStates";
-            this.button_loadStates.Size = new System.Drawing.Size(75, 23);
+            this.button_loadStates.Size = new System.Drawing.Size(114, 23);
             this.button_loadStates.TabIndex = 12;
             this.button_loadStates.Text = "Load states";
             this.button_loadStates.UseVisualStyleBackColor = true;
@@ -180,9 +210,9 @@ namespace StatesDiagram
             // 
             this.button_RefreshLayout.Location = new System.Drawing.Point(12, 44);
             this.button_RefreshLayout.Name = "button_RefreshLayout";
-            this.button_RefreshLayout.Size = new System.Drawing.Size(75, 23);
+            this.button_RefreshLayout.Size = new System.Drawing.Size(114, 23);
             this.button_RefreshLayout.TabIndex = 11;
-            this.button_RefreshLayout.Text = "Re-Layout";
+            this.button_RefreshLayout.Text = "Re-arrange states";
             this.button_RefreshLayout.UseVisualStyleBackColor = true;
             this.button_RefreshLayout.Click += new System.EventHandler(this.Button_RefreshLayout_Click);
             // 
@@ -190,9 +220,9 @@ namespace StatesDiagram
             // 
             this.button_load.Location = new System.Drawing.Point(12, 131);
             this.button_load.Name = "button_load";
-            this.button_load.Size = new System.Drawing.Size(75, 23);
+            this.button_load.Size = new System.Drawing.Size(114, 23);
             this.button_load.TabIndex = 10;
-            this.button_load.Text = "Load";
+            this.button_load.Text = "Load diagram";
             this.button_load.UseVisualStyleBackColor = true;
             this.button_load.Click += new System.EventHandler(this.Button_load_Click);
             // 
@@ -200,9 +230,9 @@ namespace StatesDiagram
             // 
             this.button_save.Location = new System.Drawing.Point(12, 102);
             this.button_save.Name = "button_save";
-            this.button_save.Size = new System.Drawing.Size(75, 23);
+            this.button_save.Size = new System.Drawing.Size(114, 23);
             this.button_save.TabIndex = 10;
-            this.button_save.Text = "Save";
+            this.button_save.Text = "Save diagram";
             this.button_save.UseVisualStyleBackColor = true;
             this.button_save.Click += new System.EventHandler(this.Button_save_Click);
             // 
@@ -210,9 +240,9 @@ namespace StatesDiagram
             // 
             this.button_export.Location = new System.Drawing.Point(12, 73);
             this.button_export.Name = "button_export";
-            this.button_export.Size = new System.Drawing.Size(75, 23);
+            this.button_export.Size = new System.Drawing.Size(114, 23);
             this.button_export.TabIndex = 10;
-            this.button_export.Text = "Export";
+            this.button_export.Text = "Export JPG+JSON";
             this.button_export.UseVisualStyleBackColor = true;
             this.button_export.Click += new System.EventHandler(this.Button_export_Click);
             // 
@@ -318,6 +348,8 @@ namespace StatesDiagram
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.Button button_load;
         private System.Windows.Forms.OpenFileDialog openFileDialog1;
+        private System.Windows.Forms.CheckBox checkBox_ShowPreview;
+        private System.Windows.Forms.CheckBox checkBox_useVsCode;
     }
 }
 

@@ -25,8 +25,8 @@
     <UpdateRequired>false</UpdateRequired>
     <MapFileExtensions>false</MapFileExtensions>
     <OpenBrowserOnPublish>false</OpenBrowserOnPublish>
-    <ApplicationRevision>1</ApplicationRevision>
-    <ApplicationVersion>1.0.0.1</ApplicationVersion>
+    <ApplicationRevision>2</ApplicationRevision>
+    <ApplicationVersion>1.0.0.2</ApplicationVersion>
     <UseApplicationTrust>false</UseApplicationTrust>
     <PublishWizardCompleted>true</PublishWizardCompleted>
     <BootstrapperEnabled>false</BootstrapperEnabled>
@@ -130,6 +130,10 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\JsonEditorForm\JsonEditorForm.csproj">
+      <Project>{90ac616b-f41c-4138-9f34-733fa4038a98}</Project>
+      <Name>JsonEditorForm</Name>
+    </ProjectReference>
     <ProjectReference Include="..\JsonPathParserLib\JsonPathParserLib.csproj">
       <Project>{B1257AF7-EE0B-4437-A812-829273393D04}</Project>
       <Name>JsonPathParserLib</Name>
