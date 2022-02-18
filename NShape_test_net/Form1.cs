@@ -34,10 +34,16 @@ namespace StatesDiagram
 
         // diagram settings
         private const string _inputFileExtension = "*.json";
-        private const string _fileExtension = "nspj";
+        private const string _diagramFileExtension = "nspj";
+        private const string _tagsFileExtension = "_tags.json";
         private string _currentDiagramName = "Sample Diagram";
         private const string _shapeType = "RoundedBox"; //Square, Box, Diamond, RoundedBox, Circle, Ellipse
         private const string _arrowLineType = "Polyline";
+        private const string _startingShapeColor = "Green";
+        private const string _endingShapeColor = "Yellow";
+        private const string _orphanShapeColor = "Red";
+        private const string _defaultShapeColor = "Blue";
+        private const string _returnOnlyShapeColor = "White";
 
         // custom arrow styles introduced in the fixed NShape.Core
         private const string _defaultNormalArrowType = "StraightArrow";
@@ -126,6 +132,7 @@ namespace StatesDiagram
                 SearchOption.AllDirectories);
 
             var states = new List<ParsedState>();
+            var links = new List<StateLink>();
             _shapeDict.Clear();
             _diagramJson = new DiagramExport();
             foreach (var file in filesList)
@@ -136,14 +143,18 @@ namespace StatesDiagram
                     continue;
 
                 ParsedState newState;
+                List<StateLink> newLinks;
 
                 if (Properties.Settings.Default.useV1)
-                    newState = GetStateV1(newPathList, file);
+                    GetStateV1(newPathList, file, out newState, out newLinks);
                 else
-                    newState = GetStateV2(newPathList, file);
+                    GetStateV2(newPathList, file, out newState, out newLinks);
 
-                if (newState != null)
+                if (!string.IsNullOrEmpty(newState.Name))
                     states.Add(newState);
+
+                if (newLinks != null)
+                    links.AddRange(newLinks);
             }
 
             var flowName = new DirectoryInfo(folderBrowserDialog1.SelectedPath).Name;
@@ -160,9 +171,9 @@ namespace StatesDiagram
                 Title = _currentDiagramName
             };
 
-            GenerateStatesDiagram(diagram, states);
-            ConnectStateShapes(diagram, states);
-            ColorizeStates(diagram, states);
+            CreateShapes(diagram, states);
+            CreateLinks(diagram, states, links);
+            ColorizeStates(diagram, states, links);
 
             cachedRepository1.InsertAll(diagram);
             display1.Diagram = diagram;
@@ -173,13 +184,22 @@ namespace StatesDiagram
         private void Button_save_Click(object sender, EventArgs e)
         {
             xmlStore1.DirectoryName = @".";
-            xmlStore1.FileExtension = _fileExtension;
+            xmlStore1.FileExtension = _diagramFileExtension;
 
             try
             {
                 project1.Repository.Update(project1.Design);
                 project1.Repository.Update();
                 project1.Repository.SaveChanges();
+
+                // save tags to additional file
+                var tags = new Dictionary<string, ShapeTag>();
+                foreach (var shape in display1.Diagram.Shapes)
+                {
+                    tags.Add(((IEntity)shape).Id.ToString(), (ShapeTag)shape.Tag);
+                }
+
+                File.WriteAllText(_currentDiagramName + _tagsFileExtension, JsonConvert.SerializeObject(tags, Formatting.Indented));
             }
             catch (Exception ex)
             {
@@ -193,24 +213,24 @@ namespace StatesDiagram
         {
             openFileDialog1.FileName = "";
             openFileDialog1.Title = "Open diagram file";
-            openFileDialog1.DefaultExt = _fileExtension;
-            openFileDialog1.Filter = $"Diagram files|*.{_fileExtension}|All files|*.*";
+            openFileDialog1.DefaultExt = _diagramFileExtension;
+            openFileDialog1.Filter = $"Diagram files|*.{_diagramFileExtension}|All files|*.*";
             openFileDialog1.ShowDialog();
         }
 
         private void OpenFileDialog1_FileOk(object sender, CancelEventArgs e)
         {
-            var i = new FileInfo(openFileDialog1.FileName);
+            var file = new FileInfo(openFileDialog1.FileName);
 
             project1.Close();
             project1.RemoveAllLibraries();
             project1.LibrarySearchPaths.Clear();
 
             // Set path to the sample diagram and the diagram file extension
-            xmlStore1.DirectoryName = i.Directory.FullName;
-            xmlStore1.FileExtension = i.Extension;
+            xmlStore1.DirectoryName = file.Directory.FullName;
+            xmlStore1.FileExtension = file.Extension;
             // Set the name of the project that should be loaded from the store
-            project1.Name = i.Name.Replace(i.Extension, "");
+            project1.Name = file.Name.Replace(file.Extension, "");
             project1.LibrarySearchPaths.Add(@".");
             project1.AutoLoadLibraries = true;
             // Open the NShape project
@@ -224,8 +244,29 @@ namespace StatesDiagram
             }
 
             // Load the diagram and display it
-            var d = project1.Repository.GetDiagrams().FirstOrDefault();
-            display1.LoadDiagram(d.Name);
+            var diagram = project1.Repository.GetDiagrams().FirstOrDefault();
+            display1.LoadDiagram(diagram.Name);
+
+            // restore tags from file
+            try
+            {
+                if (File.Exists(project1.Name + _tagsFileExtension))
+                {
+                    var tagsText = File.ReadAllText(project1.Name + _tagsFileExtension);
+                    var tags = JsonConvert.DeserializeObject<Dictionary<string, ShapeTag>>(tagsText);
+                    if (tags != null)
+                    {
+                        foreach (var tag in tags)
+                        {
+                            display1.Diagram.Shapes.FirstOrDefault(n => ((IEntity)n).Id.ToString() == tag.Key).Tag = tag.Value;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
 
             display1.ZoomWithMouseWheel = true;
             display1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
@@ -255,10 +296,10 @@ namespace StatesDiagram
 
         private void Display1_ShapeClick(object sender, Dataweb.NShape.Controllers.DiagramPresenterShapeClickEventArgs e)
         {
-            if (e?.Shape?.Tag != null && e?.Shape?.Tag is ShapeTag t)
+            if (e?.Shape?.Tag != null && e?.Shape?.Tag is ShapeTag shapeTag)
             {
-                textBox_tag.Text = t.ToString();
-                if (_showPreview) ShowPreviewEditor(t.FileName, t.JsonPath, false);
+                textBox_tag.Text = shapeTag.ToString();
+                if (_showPreview) ShowPreviewEditor(shapeTag.FileName, shapeTag.JsonPath, false);
             }
         }
 
@@ -296,23 +337,23 @@ namespace StatesDiagram
 
         private void OnClosingEditor(object sender, CancelEventArgs e)
         {
-            if (sender is Form s)
+            if (sender is Form senderForm)
             {
-                _editorPosition.WinX = s.Location.X;
-                _editorPosition.WinY = s.Location.Y;
-                _editorPosition.WinW = s.Width;
-                _editorPosition.WinH = s.Height;
+                _editorPosition.WinX = senderForm.Location.X;
+                _editorPosition.WinY = senderForm.Location.Y;
+                _editorPosition.WinW = senderForm.Width;
+                _editorPosition.WinH = senderForm.Height;
             }
         }
 
         private void OnResizeEditor(object sender, EventArgs e)
         {
-            if (sender is Form s)
+            if (sender is Form senderForm)
             {
-                _editorPosition.WinX = s.Location.X;
-                _editorPosition.WinY = s.Location.Y;
-                _editorPosition.WinW = s.Width;
-                _editorPosition.WinH = s.Height;
+                _editorPosition.WinX = senderForm.Location.X;
+                _editorPosition.WinY = senderForm.Location.Y;
+                _editorPosition.WinW = senderForm.Width;
+                _editorPosition.WinH = senderForm.Height;
             }
         }
 
@@ -341,7 +382,7 @@ namespace StatesDiagram
         private void InitProject()
         {
             xmlStore1.DirectoryName = @".";
-            xmlStore1.FileExtension = _fileExtension;
+            xmlStore1.FileExtension = _diagramFileExtension;
             project1.Name = _currentDiagramName;
             project1.Close();
             project1.RemoveAllLibraries();
@@ -349,8 +390,7 @@ namespace StatesDiagram
             project1.Create();
             project1.AddLibrary(typeof(Box).Assembly, false);
 
-            
-            if (!project1.Design.Styles.Any(n=>n.Name == _defaultNormalArrowType))
+            if (!project1.Design.Styles.Any(n => n.Name == _defaultNormalArrowType))
                 AddCustomNormalArrowCapStyles();
             if (!project1.Design.Styles.Any(n => n.Name == _defaultReverseArrowType))
                 AddCustomBackArrowCapStyles();
@@ -366,21 +406,21 @@ namespace StatesDiagram
 
         private void AddCustomNormalArrowCapStyles()
         {
-                _normalArrowType = _defaultNormalArrowType;
-                var straightArrow = new CapStyle(_normalArrowType)
-                {
-                    CapShape = CapShape.ClosedArrow,
-                    CapSize = 30,
-                    ColorStyle = project1.Design.ColorStyles.LightGreen,
-                };
-                straightArrow.AssignId(_defaultNormalArrowId);
-                //project1.Design.CapStyles.Add(straightArrow, straightArrow);
-                project1.Design.AddStyle(straightArrow);
-                //project1.Design.AssignStyle(straightArrow);
+            _normalArrowType = _defaultNormalArrowType;
+            var straightArrow = new CapStyle(_normalArrowType)
+            {
+                CapShape = CapShape.ClosedArrow,
+                CapSize = 30,
+                ColorStyle = project1.Design.ColorStyles.LightGreen,
+            };
+            straightArrow.AssignId(_defaultNormalArrowId);
+            //project1.Design.CapStyles.Add(straightArrow, straightArrow);
+            project1.Design.AddStyle(straightArrow);
+            //project1.Design.AssignStyle(straightArrow);
 
-                // need to save CapStyle changes in the project to allow export *.nspj file
-                project1.Repository.Update(project1.Design);
-                //but it doesn't work for some reason
+            // need to save CapStyle changes in the project to allow export *.nspj file
+            project1.Repository.Update(project1.Design);
+            //but it doesn't work for some reason
         }
 
         private void AddCustomBackArrowCapStyles()
@@ -402,44 +442,39 @@ namespace StatesDiagram
             //but it doesn't work for some reason
         }
 
-        private ParsedState GetStateV1(IEnumerable<ParsedProperty> pathList, string filePath)
+        private void GetStateV1(IEnumerable<ParsedProperty> pathList, string filePath, out ParsedState state, out List<StateLink> links)
         {
-            // find state defined
-            var state = pathList.FirstOrDefault(n => n.Path.Equals(RootName + _pathDivider + "state", StringComparison.OrdinalIgnoreCase));
+            state = new ParsedState();
+            links = new List<StateLink>();
 
-            if (state == null)
-                return null;
+            // find state defined
+            var stateObject = pathList.FirstOrDefault(n => n.Path.Equals(RootName + _pathDivider + "state", StringComparison.OrdinalIgnoreCase));
+
+            if (stateObject == null)
+                return;
 
             // find all transitions defined
             var transitions = pathList.Where(n => n.Name.Equals("state", StringComparison.OrdinalIgnoreCase) && n.ParentPath.Contains(_pathDivider + "transition")).ToList();
 
-            // find all PreviousState transitions defined
-            var returntransitions = pathList.Where(n => n.Name.Equals("calculatedState", StringComparison.OrdinalIgnoreCase) && n.ParentPath.Contains(_pathDivider + "transition"));
-            var returnLink = returntransitions.FirstOrDefault(n => n.Value.Equals("GetPreviousState", StringComparison.OrdinalIgnoreCase));
-
             // generate links from current state
-            // state_name_to, filter_method_name
-            List<StateLink> tLinks = new List<StateLink>();
             foreach (var transition in transitions)
             {
+                // get the name of the method which is running the transition for description
                 var tName = pathList.FirstOrDefault(n => n.Name.Equals("name", StringComparison.OrdinalIgnoreCase) && n.ParentPath == TrimPathEnd(transition.ParentPath, 1, _pathDivider));
-                if (!tLinks.Any(n => n.ToState == transition.Value))
+                var newLink = new StateLink()
                 {
-                    var newLink = new StateLink()
+                    FromState = stateObject.Value,
+                    ToState = transition?.Value,
+                    Tag = new ShapeTag
                     {
+                        Description = tName?.Value ?? "",
                         FileName = filePath,
                         JsonPath = transition?.Path,
-                        Tag = new ShapeTag
-                        {
-                            Description = tName?.Value ?? "",
-                            FileName = filePath,
-                            JsonPath = tName?.Path ?? ""
-                        },
-                        ToState = transition?.Value
-                    };
+                    },
+                };
 
-                    tLinks.Add(newLink);
-                }
+                links.Add(newLink);
+
             }
 
             // find all calculated transitions defined and create links for them
@@ -451,101 +486,102 @@ namespace StatesDiagram
 
                 foreach (var c in cTrans)
                 {
+                    // get the name of the method which is running the transition for description
                     var tName = pathList.FirstOrDefault(n => n.Name.Equals("name", StringComparison.OrdinalIgnoreCase) && n.ParentPath.Equals(TrimPathEnd(c.ParentPath, 2, _pathDivider), StringComparison.OrdinalIgnoreCase));
 
                     var newLink = new StateLink()
                     {
-                        FileName = filePath,
-                        JsonPath = c?.Path,
+                        FromState = stateObject.Value,
+                        ToState = c.Name,
                         Tag = new ShapeTag
                         {
                             Description = tName?.Value ?? "",
                             FileName = filePath,
-                            JsonPath = tName?.Path ?? ""
-                        },
-                        ToState = c?.Name
+                            JsonPath = c.Path,
+                        }
                     };
 
-                    tLinks.Add(newLink);
+                    links.Add(newLink);
                 }
             }
+
+            // find all PreviousState transitions defined
+            var returntransitions = pathList.Where(n => n.Name.Equals("calculatedState", StringComparison.OrdinalIgnoreCase) && n.ParentPath.Contains(_pathDivider + "transition"));
+            var returnLink = returntransitions.FirstOrDefault(n => n.Value.Equals("GetPreviousState", StringComparison.OrdinalIgnoreCase));
 
             var newReturnTag = new ShapeTag();
             if (returnLink != null)
             {
                 newReturnTag.Description = "GetPreviousState";
                 newReturnTag.FileName = filePath;
-                newReturnTag.JsonPath = returnLink?.Path;
+                newReturnTag.JsonPath = returnLink.Path;
             }
 
-            var newState = new ParsedState()
+            state = new ParsedState()
             {
-                Name = state?.Value,
+                Name = stateObject.Value,
                 Tag = new ShapeTag
                 {
-                    Description = state?.Value,
+                    Description = stateObject.Value,
                     FileName = filePath,
-                    JsonPath = state?.Path
+                    JsonPath = stateObject.Path,
+                    Color = returnLink == null ? _defaultShapeColor : _returnOnlyShapeColor
                 },
-                LinksTo = tLinks,
                 ToPreviousState = returnLink != null,
                 ToPreviousStateTag = newReturnTag
             };
-
-            return newState;
         }
 
-        private ParsedState GetStateV2(IEnumerable<ParsedProperty> pathList, string filePath)
+        private void GetStateV2(IEnumerable<ParsedProperty> pathList, string filePath, out ParsedState state, out List<StateLink> links)
         {
+            state = new ParsedState();
+            links = new List<StateLink>();
+
             // ignore metadata file
             if (filePath.EndsWith("configuration.json", StringComparison.OrdinalIgnoreCase))
-                return null;
+                return;
 
             // find state defined
-            var state = pathList.FirstOrDefault(n => n.Path.Equals(RootName + _pathDivider + "name", StringComparison.OrdinalIgnoreCase));
+            var stateObject = pathList.FirstOrDefault(n => n.Path.Equals(RootName + _pathDivider + "name", StringComparison.OrdinalIgnoreCase));
 
-            if (state == null)
-                return null;
+            if (stateObject == null)
+                return;
 
             // find all transitions defined
             var transitions = pathList.Where(n => n.Name.Equals("type", StringComparison.OrdinalIgnoreCase) && n.Value.Equals("transition", StringComparison.OrdinalIgnoreCase)).ToList();
 
             // Generate links from current state
             // state_name_to, filter_method_name
-            List<StateLink> tLinks = new List<StateLink>();
             foreach (var transition in transitions)
             {
                 var tName = pathList.FirstOrDefault(n => n.Name.Equals("name", StringComparison.OrdinalIgnoreCase) && n.ParentPath == transition.ParentPath);
 
                 var newLink = new StateLink()
                 {
-                    FileName = filePath,
-                    JsonPath = tName?.Path,
+                    FromState = stateObject.Value,
+                    ToState = tName?.Value,
                     Tag = new ShapeTag
                     {
                         Description = tName?.Value ?? "",
                         FileName = filePath,
                         JsonPath = tName?.Path ?? ""
-                    },
-                    ToState = tName?.Value
+                    }
                 };
 
-                tLinks.Add(newLink);
+                links.Add(newLink);
             }
 
-            var newState = new ParsedState()
+            state = new ParsedState()
             {
-                Name = state?.Value,
+                Name = stateObject.Value,
                 Tag = new ShapeTag
                 {
                     FileName = filePath,
-                    JsonPath = state?.Path,
-                    Description = state?.Value
-                },
-                LinksTo = tLinks,
+                    JsonPath = stateObject.Path,
+                    Description = stateObject.Value,
+                    Color = _defaultShapeColor
+                }
             };
-
-            return newState;
         }
 
         private IEnumerable<ParsedProperty> ParseJson(string filePath, JsonPathParser parser)
@@ -590,17 +626,17 @@ namespace StatesDiagram
             return newPathList;
         }
 
-        private void GenerateStatesDiagram(Diagram diagram, List<ParsedState> states)
+        private void CreateShapes(Diagram diagram, List<ParsedState> states)
         {
             foreach (var state in states)
             {
                 var name = state.Name;
-                CreateShape(diagram, name, state.Tag);
+                DrawShape(diagram, name, state.Tag);
                 AddNodeToJson(name, name);
             }
         }
 
-        private void CreateShape(Diagram diagram, string name, ShapeTag tag, bool incorrect = false)
+        private void DrawShape(Diagram diagram, string name, ShapeTag tag, bool incorrect = false)
         {
             if (_shapeDict.TryGetValue(name, out var _))
                 return;
@@ -614,16 +650,12 @@ namespace StatesDiagram
             shape.Tag = tag;
             if (!string.IsNullOrEmpty(tag.Color))
             {
-                var d = project1.Repository.GetDesigns();
-                var f = d.FirstOrDefault().FillStyles;
-                shape.FillStyle = f.FirstOrDefault(n => n.Name == tag.Color);
+                shape.FillStyle = FindColorByName(tag.Color);
             }
 
             if (incorrect)
             {
-                var d = project1.Repository.GetDesigns();
-                var f = d.FirstOrDefault().FillStyles;
-                shape.FillStyle = f.Red;
+                shape.FillStyle = FindColorByName(_orphanShapeColor);
             }
 
             shape.SetCaptionText(0, name);
@@ -632,66 +664,78 @@ namespace StatesDiagram
             _shapeDict.Add(name, shape);
         }
 
-        void ConnectStateShapes(Diagram diagram, List<ParsedState> states)
+        void CreateLinks(Diagram diagram, List<ParsedState> states, List<StateLink> links)
         {
-            foreach (var state in states)
+            for (var i = 0; i < links.Count; i++)
             {
-                foreach (var link in state.LinksTo)
+                var link = links[i];
+
+                var tag = new ShapeTag()
                 {
-                    var tag = new ShapeTag()
+                    FileName = link.Tag.FileName,
+                    JsonPath = link.Tag.JsonPath,
+                    Description = ""
+                };
+
+                // there should be exactly one state to point to
+                var remoteState = states.FirstOrDefault(n => n.Name == link.ToState);
+
+                // if there is a link to non-existing state then create this state in red color
+                if (remoteState == null)
+                {
+                    var newState = new ParsedState()
                     {
-                        FileName = link.FileName,
-                        JsonPath = link.JsonPath,
-                        Description = ""
-                    };
-
-                    // there should be exactly one state to point to
-                    var remoteState = states.FirstOrDefault(n => n.Name == link.ToState);
-
-                    // if there is a link to non-existing state then create this state in red color
-                    if (remoteState == null)
-                    {
-                        tag.Description = "Incorrect state name!!!";
-                        tag.Color = "Red";
-                        CreateShape(diagram, link.ToState, tag, true);
-                        AddNodeToJson(link.ToState, link.ToState);
-                    }
-
-                    CreateLink(diagram, state.Name, link.ToState, tag);
-                    AddEdgeToJson(state.Name, link.ToState, link.Tag.ToString());
-
-                    // create reverse links to all links defined in the remote state
-                    if (remoteState != null && remoteState.ToPreviousState)
-                    {
-                        var newReturnLink = new StateLink
+                        Name = link.ToState,
+                        Orphan = true,
+                        Tag = new ShapeTag
                         {
-                            FileName = remoteState.ToPreviousStateTag.FileName,
-                            JsonPath = remoteState.ToPreviousStateTag.JsonPath,
-                            ToState = state.Name,
-                            Tag = remoteState.ToPreviousStateTag
-                        };
+                            FileName = link.Tag.FileName,
+                            JsonPath = link.Tag.JsonPath,
+                            Description = "Missing state",
+                            Color = _orphanShapeColor
+                        }
+                    };
+                    states.Add(newState);
 
-                        remoteState.LinksTo.Add(newReturnLink);
+                    link.ToOrphan = true;
+                    tag.Description = "Incorrect state name!!!";
+                    tag.Color = "Red";
+                    DrawShape(diagram, link.ToState, tag, true);
+                    AddNodeToJson(link.ToState, link.ToState);
+                }
 
-                        tag.Description = "Return_to_previous_state";
-                        CreateLink(diagram, link.ToState, state.Name, tag, true);
-                        AddEdgeToJson(link.ToState, state.Name, link.Tag.ToString());
-                    }
+                DrawLink(diagram, link.FromState, link.ToState, tag, link.ToPreviousState);
+                AddEdgeToJson(link.FromState, link.ToState, link.Tag.ToString());
+
+                // create reverse links to all links defined in the remote state
+                if (remoteState != null && remoteState.ToPreviousState)
+                {
+                    var newReturnLink = new StateLink
+                    {
+                        FromState = link.ToState,
+                        ToState = link.FromState,
+                        Tag = remoteState.ToPreviousStateTag,
+                        ToPreviousState = true,
+                    };
+                    links.Add(newReturnLink);
+                    /*tag.Description = "Return_to_previous_state";
+                    DrawLink(diagram, link.ToState, link.FromState, tag, true);
+                    AddEdgeToJson(link.ToState, link.FromState, link.Tag.ToString());*/
                 }
             }
         }
 
-        void CreateLink(Diagram diagram, string fromName, string toName, ShapeTag tag, bool backArrow = false)
+        void DrawLink(Diagram diagram, string fromName, string toName, ShapeTag tag, bool backArrow = false)
         {
-            Polyline arrow1 = (Polyline)project1.ShapeTypes[_arrowLineType].CreateInstance();
-            diagram.Shapes.Add(arrow1);
+            Polyline arrow = (Polyline)project1.ShapeTypes[_arrowLineType].CreateInstance();
+            diagram.Shapes.Add(arrow);
 
             if (backArrow)
-                arrow1.EndCapStyle = project1.Design.CapStyles.FirstOrDefault(n => n.Name == _reverseArrowType);
+                arrow.EndCapStyle = project1.Design.CapStyles.FirstOrDefault(n => n.Name == _reverseArrowType);
             else
-                arrow1.EndCapStyle = project1.Design.CapStyles.FirstOrDefault(n => n.Name == _normalArrowType);
+                arrow.EndCapStyle = project1.Design.CapStyles.FirstOrDefault(n => n.Name == _normalArrowType);
 
-            arrow1.Tag = tag;
+            arrow.Tag = tag;
             if (!_shapeDict.TryGetValue(fromName, out var shStart))
             {
                 MessageBox.Show($"State \"{fromName}\" does not exist");
@@ -699,8 +743,9 @@ namespace StatesDiagram
             else
             {
                 // Connect one of the line shape's endings (first vertex) to the referring shape's reference point
-                arrow1.Connect(ControlPointId.FirstVertex, shStart, ControlPointId.Reference);
+                arrow.Connect(ControlPointId.FirstVertex, shStart, ControlPointId.Reference);
             }
+
             if (!_shapeDict.TryGetValue(toName, out var shEnd))
             {
                 MessageBox.Show($"State \"{fromName}\" does not exist");
@@ -708,39 +753,45 @@ namespace StatesDiagram
             else
             {
                 // Connect the other of the line shape's endings (last vertex) to the referred shape
-                arrow1.Connect(ControlPointId.LastVertex, shEnd, ControlPointId.Reference);
+                arrow.Connect(ControlPointId.LastVertex, shEnd, ControlPointId.Reference);
             }
         }
 
-        void ColorizeStates(Diagram diagram, List<ParsedState> states)
+        void ColorizeStates(Diagram diagram, List<ParsedState> states, List<StateLink> links)
         {
             var shapes = diagram.Shapes;
-            var allLinks = states.SelectMany(n => n.LinksTo.Select(m => m.ToState));
-            var fillStyle = project1.Repository.GetDesigns().FirstOrDefault().FillStyles;
 
             // подсветить зеленым стейты, из которых только выходы (начальные)
-            var startingBlocks = states.Where(n => !allLinks.Contains(n.Name));
-            foreach (var state in states)
-            {
-                if (states.Any(n => n.LinksTo.Any(m => m.ToState == state.Name)))
-                    startingBlocks.Append(state);
-            }
+            var allStates = states.Where(n => !n.Orphan).Select(n => n.Name).Distinct();
+            var statesWithInput = links.Select(n => n.ToState).Distinct();
+            var statesWithOutput = links.Select(n => n.FromState).Distinct();
 
-            foreach (var block in startingBlocks)
+            var startingBlockNames = allStates.Except(statesWithInput);
+            var endingBlockNames = allStates.Except(statesWithOutput);
+
+            foreach (var blockName in startingBlockNames)
             {
-                block.Tag.Color = "Green";
-                var shape = shapes.FirstOrDefault(n => n is CaptionedShapeBase shapeObject && shapeObject.GetCaptionText(0) == block.Name);
-                ((CaptionedShapeBase)shape).FillStyle = fillStyle.Green;
+                var block = states.FirstOrDefault(n => n.Name == blockName);
+                block.Tag.Color = _startingShapeColor;
+                var shape = shapes.FirstOrDefault(n => n is CaptionedShapeBase shapeObject && shapeObject.GetCaptionText(0) == blockName);
+                ((CaptionedShapeBase)shape).FillStyle = FindColorByName(_startingShapeColor);
             }
 
             // подсветить желтым стейты, в которые идут только входы (конечные)
-            var endingBlocks = states.Where(n => n.LinksTo == null || n.LinksTo.Count == 0);
-            foreach (var block in endingBlocks)
+            foreach (var blockName in endingBlockNames)
             {
-                block.Tag.Color = "Yellow";
-                var shape = shapes.FirstOrDefault(n => n is RectangleBase sss && sss.GetCaptionText(0) == block.Name);
-                ((RectangleBase)shape).FillStyle = fillStyle.Yellow;
+                var block = states.FirstOrDefault(n => n.Name == blockName);
+                block.Tag.Color = _endingShapeColor;
+                var shape = shapes.FirstOrDefault(n => n is CaptionedShapeBase shapeObject && shapeObject.GetCaptionText(0) == block.Name);
+                ((RectangleBase)shape).FillStyle = FindColorByName(_endingShapeColor);
             }
+        }
+
+        private IFillStyle FindColorByName(string colorName)
+        {
+            var design = project1?.Repository?.GetDesigns();
+            var fillStyles = design?.FirstOrDefault()?.FillStyles;
+            return fillStyles?.FirstOrDefault(n => n.Name == colorName);
         }
 
         void RefreshLayout()
@@ -749,10 +800,10 @@ namespace StatesDiagram
                 return;
 
             // First, place all shapes to the same position
-            foreach (Shape s in display1.Diagram.Shapes)
+            foreach (Shape shape in display1.Diagram.Shapes)
             {
-                s.X = _initX;
-                s.Y = _initY;
+                shape.X = _initX;
+                shape.Y = _initY;
             }
 
             // Create the layouter and set up layout parameters
@@ -894,35 +945,6 @@ namespace StatesDiagram
             textEditor.HighlightPathJson(jsonPath);
         }
 
-        private void AddNodeToJson(string nodeName, string labelText)
-        {
-            var newNode = new DiagramNode()
-            {
-                stringId = nodeName,
-                label = labelText
-            };
-            _diagramJson.AddNode(newNode);
-        }
-
-        private void AddEdgeToJson(string sourceName, string targetName, string labelText)
-        {
-            var retLink = new DiagramEdge()
-            {
-                source = sourceName,
-                target = targetName,
-                label = labelText
-            };
-
-            try
-            {
-                _diagramJson.AddEdge(retLink);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-            }
-        }
-
         private void VsCodeOpenFile(string command)
         {
             var processInfo = new ProcessStartInfo("code", command)
@@ -968,6 +990,35 @@ namespace StatesDiagram
             }
 
             return startLine;
+        }
+
+        private void AddNodeToJson(string nodeName, string labelText)
+        {
+            var newNode = new DiagramNode()
+            {
+                stringId = nodeName,
+                label = labelText
+            };
+            _diagramJson.AddNode(newNode);
+        }
+
+        private void AddEdgeToJson(string sourceName, string targetName, string labelText)
+        {
+            var retLink = new DiagramEdge()
+            {
+                source = sourceName,
+                target = targetName,
+                label = labelText
+            };
+
+            try
+            {
+                _diagramJson.AddEdge(retLink);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
         }
 
         private static string TrimPathEnd(string originalPath, int levels, char pathDivider)
