@@ -22,94 +22,6 @@ namespace StatesDiagram
 {
     public partial class Form1 : Form
     {
-        public class ParsedState
-        {
-            public string Name = "";
-            public bool ToPreviousState = false;
-            public string FileName = "";
-            public string JsonPath = "";
-            public List<StateLink> LinksTo = new List<StateLink>();
-        }
-
-        public class StateLink
-        {
-            public string ToState = "";
-            public string Tag = "";
-            public string FileName = "";
-            public string JsonPath = "";
-        }
-
-        public class DiagramNode
-        {
-            public int id = 0;
-            public string stringId = "";
-            public string label = "";
-        }
-
-        public class DiagramEdge
-        {
-            public int from = 0;
-            public int to = 0;
-            public string source = "";
-            public string target = "";
-            public string label;
-        }
-
-        public class DiagramExport
-        {
-            private int idCounter = 0;
-            private Dictionary<string, int> dic = new Dictionary<string, int>();
-            public List<DiagramNode> nodes = new List<DiagramNode>();
-            public List<DiagramEdge> edges = new List<DiagramEdge>();
-
-            public void AddNode(DiagramNode newNode)
-            {
-                if (!dic.ContainsKey(newNode.stringId))
-                {
-                    newNode.id = idCounter;
-                    dic.Add(newNode.stringId, idCounter);
-                    nodes.Add(newNode);
-                    idCounter++;
-                }
-            }
-
-            public void AddNodes(IEnumerable<DiagramNode> newNodes)
-            {
-                foreach (var node in newNodes)
-                {
-                    AddNode(node);
-                }
-            }
-
-            public void AddEdge(DiagramEdge newEdge)
-            {
-                var r = dic.TryGetValue(newEdge.source, out var fromId);
-                r &= dic.TryGetValue(newEdge.target, out var toId);
-                if (r)
-                {
-                    newEdge.from = fromId;
-                    newEdge.to = toId;
-                    edges.Add(newEdge);
-                }
-                else
-                {
-                    throw new ArgumentOutOfRangeException($"Id's \"{newEdge.source}\" or \"{newEdge.target}\" were not found");
-                }
-            }
-        }
-
-        public class ShapeTag
-        {
-            public string FileName = "";
-            public string JsonPath = "";
-            public string Description = "";
-
-            public override string ToString()
-            {
-                return $"File: {FileName}{Environment.NewLine}JSON path: {JsonPath}{Environment.NewLine}Description: {Description}";
-            }
-        }
-
         public struct WinPosition
         {
             public int WinX;
@@ -121,13 +33,20 @@ namespace StatesDiagram
         }
 
         // diagram settings
+        private const string _inputFileExtension = "*.json";
+        private const string _fileExtension = "nspj";
         private string _currentDiagramName = "Sample Diagram";
-        private const string _shapeType = "RoundedBox"; //"RoundedBox", "Ellipse"
-        private const string _defaultArrowType = "ArrowOpen";
-        private const string _defaultNormalArrowType = "StraightArrow";
-        private const string _defaultReverseArrowType = "BackArrow";
+        private const string _shapeType = "RoundedBox"; //Square, Box, Diamond, RoundedBox, Circle, Ellipse
         private const string _arrowLineType = "Polyline";
 
+        // custom arrow styles introduced in the fixed NShape.Core
+        private const string _defaultNormalArrowType = "StraightArrow";
+        private Guid _defaultNormalArrowId = Guid.Parse("74245395-2ae1-47da-bafd-a64f22e11b67");
+        private const string _defaultReverseArrowType = "BackArrow";
+        private Guid _defaultReverseArrowId = Guid.Parse("edef5bdf-56c8-457c-ae58-60bf74fce981");
+
+        // custom arrow types only works normally with fixed NShape.Core (fixes attached to the project)
+        // otherise please use standard "ArrowClosed"/"ArrowOpen" to allow diagram to be saved normally
         private string _normalArrowType = "StraightArrow";
         private string _reverseArrowType = "BackArrow";
 
@@ -197,12 +116,13 @@ namespace StatesDiagram
             if (!string.IsNullOrEmpty(Properties.Settings.Default.LastFolder))
                 folderBrowserDialog1.SelectedPath = Properties.Settings.Default.LastFolder;
 
-            if (folderBrowserDialog1.ShowDialog() != DialogResult.OK || string.IsNullOrEmpty(folderBrowserDialog1.SelectedPath))
+            if (folderBrowserDialog1.ShowDialog() != DialogResult.OK
+                || string.IsNullOrEmpty(folderBrowserDialog1.SelectedPath))
                 return;
 
             Properties.Settings.Default.LastFolder = folderBrowserDialog1.SelectedPath;
             var filesList = Directory.GetFiles(folderBrowserDialog1.SelectedPath,
-                "*.json",
+                _inputFileExtension,
                 SearchOption.AllDirectories);
 
             var states = new List<ParsedState>();
@@ -242,6 +162,7 @@ namespace StatesDiagram
 
             GenerateStatesDiagram(diagram, states);
             ConnectStateShapes(diagram, states);
+            ColorizeStates(diagram, states);
 
             cachedRepository1.InsertAll(diagram);
             display1.Diagram = diagram;
@@ -252,7 +173,7 @@ namespace StatesDiagram
         private void Button_save_Click(object sender, EventArgs e)
         {
             xmlStore1.DirectoryName = @".";
-            xmlStore1.FileExtension = "nspj";
+            xmlStore1.FileExtension = _fileExtension;
 
             try
             {
@@ -264,14 +185,16 @@ namespace StatesDiagram
             {
                 MessageBox.Show(ex.Message);
             }
+
+            MessageBox.Show($"Diagram saved to \"{project1.Name}{xmlStore1.FileExtension}\" .");
         }
 
         private void Button_load_Click(object sender, EventArgs e)
         {
             openFileDialog1.FileName = "";
-            openFileDialog1.Title = "Open NSPJ file";
-            openFileDialog1.DefaultExt = "nspj";
-            openFileDialog1.Filter = "NSPJ files|*.nspj|All files|*.*";
+            openFileDialog1.Title = "Open diagram file";
+            openFileDialog1.DefaultExt = _fileExtension;
+            openFileDialog1.Filter = $"Diagram files|*.{_fileExtension}|All files|*.*";
             openFileDialog1.ShowDialog();
         }
 
@@ -418,7 +341,7 @@ namespace StatesDiagram
         private void InitProject()
         {
             xmlStore1.DirectoryName = @".";
-            xmlStore1.FileExtension = "nspj";
+            xmlStore1.FileExtension = _fileExtension;
             project1.Name = _currentDiagramName;
             project1.Close();
             project1.RemoveAllLibraries();
@@ -426,38 +349,12 @@ namespace StatesDiagram
             project1.Create();
             project1.AddLibrary(typeof(Box).Assembly, false);
 
-            if (Properties.Settings.Default.useV1)
-            {
-                _normalArrowType = _defaultNormalArrowType;
-                var straightArrow = new CapStyle(_normalArrowType)
-                {
-                    CapShape = CapShape.ClosedArrow,
-                    CapSize = 30,
-                    ColorStyle = project1.Design.ColorStyles.LightGreen,
-                };
-                project1.Design.CapStyles.Add(straightArrow, straightArrow);
+            
+            if (!project1.Design.Styles.Any(n=>n.Name == _defaultNormalArrowType))
+                AddCustomNormalArrowCapStyles();
+            if (!project1.Design.Styles.Any(n => n.Name == _defaultReverseArrowType))
+                AddCustomBackArrowCapStyles();
 
-                _reverseArrowType = _defaultReverseArrowType;
-                var backArrow = new CapStyle(_reverseArrowType)
-                {
-                    CapShape = CapShape.ClosedArrow,
-                    CapSize = 30,
-                    ColorStyle = project1.Design.ColorStyles.Red,
-                };
-                project1.Design.CapStyles.Add(backArrow, backArrow);
-
-                // need to save CapStyle changes in the project to allow export *.nspj file
-                //project1.Design.AddStyle(backArrow);
-                //project1.Design.AddStyle(straightArrow);
-                project1.Repository.Update(project1.Design);
-                project1.Repository.Update();
-                //but it doesn't work for some reason
-            }
-            else
-            {
-                _normalArrowType = _defaultArrowType;
-                _reverseArrowType = _defaultArrowType;
-            }
             display1.ZoomWithMouseWheel = true;
             display1.AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
@@ -467,18 +364,60 @@ namespace StatesDiagram
             textBox_sizeY.Text = diagramHeight.ToString();
         }
 
+        private void AddCustomNormalArrowCapStyles()
+        {
+                _normalArrowType = _defaultNormalArrowType;
+                var straightArrow = new CapStyle(_normalArrowType)
+                {
+                    CapShape = CapShape.ClosedArrow,
+                    CapSize = 30,
+                    ColorStyle = project1.Design.ColorStyles.LightGreen,
+                };
+                straightArrow.AssignId(_defaultNormalArrowId);
+                //project1.Design.CapStyles.Add(straightArrow, straightArrow);
+                project1.Design.AddStyle(straightArrow);
+                //project1.Design.AssignStyle(straightArrow);
+
+                // need to save CapStyle changes in the project to allow export *.nspj file
+                project1.Repository.Update(project1.Design);
+                //but it doesn't work for some reason
+        }
+
+        private void AddCustomBackArrowCapStyles()
+        {
+            _reverseArrowType = _defaultReverseArrowType;
+            var backArrow = new CapStyle(_reverseArrowType)
+            {
+                CapShape = CapShape.ClosedArrow,
+                CapSize = 30,
+                ColorStyle = project1.Design.ColorStyles.Red,
+            };
+            backArrow.AssignId(_defaultReverseArrowId);
+            //project1.Design.CapStyles.Add(backArrow, backArrow);
+            project1.Design.AddStyle(backArrow);
+            //project1.Design.AssignStyle(backArrow);
+
+            // need to save CapStyle changes in the project to allow export *.nspj file
+            project1.Repository.Update(project1.Design);
+            //but it doesn't work for some reason
+        }
+
         private ParsedState GetStateV1(IEnumerable<ParsedProperty> pathList, string filePath)
         {
             // find state defined
             var state = pathList.FirstOrDefault(n => n.Path.Equals(RootName + _pathDivider + "state", StringComparison.OrdinalIgnoreCase));
+
+            if (state == null)
+                return null;
 
             // find all transitions defined
             var transitions = pathList.Where(n => n.Name.Equals("state", StringComparison.OrdinalIgnoreCase) && n.ParentPath.Contains(_pathDivider + "transition")).ToList();
 
             // find all PreviousState transitions defined
             var returntransitions = pathList.Where(n => n.Name.Equals("calculatedState", StringComparison.OrdinalIgnoreCase) && n.ParentPath.Contains(_pathDivider + "transition"));
-            var returnLink = returntransitions.Any(n => n.Value.Equals("GetPreviousState", StringComparison.OrdinalIgnoreCase));
+            var returnLink = returntransitions.FirstOrDefault(n => n.Value.Equals("GetPreviousState", StringComparison.OrdinalIgnoreCase));
 
+            // generate links from current state
             // state_name_to, filter_method_name
             List<StateLink> tLinks = new List<StateLink>();
             foreach (var transition in transitions)
@@ -490,7 +429,12 @@ namespace StatesDiagram
                     {
                         FileName = filePath,
                         JsonPath = transition?.Path,
-                        Tag = tName?.Value ?? "",
+                        Tag = new ShapeTag
+                        {
+                            Description = tName?.Value ?? "",
+                            FileName = filePath,
+                            JsonPath = tName?.Path ?? ""
+                        },
                         ToState = transition?.Value
                     };
 
@@ -498,7 +442,7 @@ namespace StatesDiagram
                 }
             }
 
-            // find all calculated transitions defined
+            // find all calculated transitions defined and create links for them
             var ctransitions = pathList.Where(n => n.Name.Equals("calculatedState", StringComparison.OrdinalIgnoreCase) && n.ParentPath.Contains(_pathDivider + "transition"));
             var ct = ctransitions.FirstOrDefault(n => n.Value == "NextStateByInitialRiskValue");
             if (ct != null)
@@ -508,11 +452,17 @@ namespace StatesDiagram
                 foreach (var c in cTrans)
                 {
                     var tName = pathList.FirstOrDefault(n => n.Name.Equals("name", StringComparison.OrdinalIgnoreCase) && n.ParentPath.Equals(TrimPathEnd(c.ParentPath, 2, _pathDivider), StringComparison.OrdinalIgnoreCase));
+
                     var newLink = new StateLink()
                     {
                         FileName = filePath,
                         JsonPath = c?.Path,
-                        Tag = tName?.Value ?? "",
+                        Tag = new ShapeTag
+                        {
+                            Description = tName?.Value ?? "",
+                            FileName = filePath,
+                            JsonPath = tName?.Path ?? ""
+                        },
                         ToState = c?.Name
                     };
 
@@ -520,13 +470,26 @@ namespace StatesDiagram
                 }
             }
 
+            var newReturnTag = new ShapeTag();
+            if (returnLink != null)
+            {
+                newReturnTag.Description = "GetPreviousState";
+                newReturnTag.FileName = filePath;
+                newReturnTag.JsonPath = returnLink?.Path;
+            }
+
             var newState = new ParsedState()
             {
                 Name = state?.Value,
-                FileName = filePath,
-                JsonPath = state?.Path,
+                Tag = new ShapeTag
+                {
+                    Description = state?.Value,
+                    FileName = filePath,
+                    JsonPath = state?.Path
+                },
                 LinksTo = tLinks,
-                ToPreviousState = returnLink
+                ToPreviousState = returnLink != null,
+                ToPreviousStateTag = newReturnTag
             };
 
             return newState;
@@ -534,25 +497,36 @@ namespace StatesDiagram
 
         private ParsedState GetStateV2(IEnumerable<ParsedProperty> pathList, string filePath)
         {
+            // ignore metadata file
             if (filePath.EndsWith("configuration.json", StringComparison.OrdinalIgnoreCase))
                 return null;
 
             // find state defined
             var state = pathList.FirstOrDefault(n => n.Path.Equals(RootName + _pathDivider + "name", StringComparison.OrdinalIgnoreCase));
 
+            if (state == null)
+                return null;
+
             // find all transitions defined
             var transitions = pathList.Where(n => n.Name.Equals("type", StringComparison.OrdinalIgnoreCase) && n.Value.Equals("transition", StringComparison.OrdinalIgnoreCase)).ToList();
 
+            // Generate links from current state
             // state_name_to, filter_method_name
             List<StateLink> tLinks = new List<StateLink>();
             foreach (var transition in transitions)
             {
                 var tName = pathList.FirstOrDefault(n => n.Name.Equals("name", StringComparison.OrdinalIgnoreCase) && n.ParentPath == transition.ParentPath);
+
                 var newLink = new StateLink()
                 {
                     FileName = filePath,
                     JsonPath = tName?.Path,
-                    Tag = tName?.Value ?? "",
+                    Tag = new ShapeTag
+                    {
+                        Description = tName?.Value ?? "",
+                        FileName = filePath,
+                        JsonPath = tName?.Path ?? ""
+                    },
                     ToState = tName?.Value
                 };
 
@@ -562,8 +536,12 @@ namespace StatesDiagram
             var newState = new ParsedState()
             {
                 Name = state?.Value,
-                FileName = filePath,
-                JsonPath = state?.Path,
+                Tag = new ShapeTag
+                {
+                    FileName = filePath,
+                    JsonPath = state?.Path,
+                    Description = state?.Value
+                },
                 LinksTo = tLinks,
             };
 
@@ -591,7 +569,7 @@ namespace StatesDiagram
 
             var pos = -1;
             var errorFound = false;
-            IEnumerable<ParsedProperty> newPathList = null;
+            IEnumerable<ParsedProperty> newPathList;
             try
             {
                 newPathList = parser.ParseJsonToPathList(text, out pos, out errorFound);
@@ -617,21 +595,8 @@ namespace StatesDiagram
             foreach (var state in states)
             {
                 var name = state.Name;
-                var tag = new ShapeTag()
-                {
-                    FileName = state?.FileName,
-                    JsonPath = state?.JsonPath,
-                    Description = ""
-                };
-
-                CreateShape(diagram, name, tag);
-
-                var newNode = new DiagramNode()
-                {
-                    stringId = name,
-                    label = name
-                };
-                _diagramJson.AddNode(newNode);
+                CreateShape(diagram, name, state.Tag);
+                AddNodeToJson(name, name);
             }
         }
 
@@ -647,6 +612,12 @@ namespace StatesDiagram
             shape.X = _initX;
             shape.Y = _initY;
             shape.Tag = tag;
+            if (!string.IsNullOrEmpty(tag.Color))
+            {
+                var d = project1.Repository.GetDesigns();
+                var f = d.FirstOrDefault().FillStyles;
+                shape.FillStyle = f.FirstOrDefault(n => n.Name == tag.Color);
+            }
 
             if (incorrect)
             {
@@ -669,57 +640,42 @@ namespace StatesDiagram
                 {
                     var tag = new ShapeTag()
                     {
-                        FileName = link?.FileName,
-                        JsonPath = link?.JsonPath,
+                        FileName = link.FileName,
+                        JsonPath = link.JsonPath,
                         Description = ""
                     };
 
-                    var s = states.FirstOrDefault(n => n.Name == link.ToState);
-                    if (s == null)
+                    // there should be exactly one state to point to
+                    var remoteState = states.FirstOrDefault(n => n.Name == link.ToState);
+
+                    // if there is a link to non-existing state then create this state in red color
+                    if (remoteState == null)
                     {
                         tag.Description = "Incorrect state name!!!";
+                        tag.Color = "Red";
                         CreateShape(diagram, link.ToState, tag, true);
+                        AddNodeToJson(link.ToState, link.ToState);
                     }
 
                     CreateLink(diagram, state.Name, link.ToState, tag);
+                    AddEdgeToJson(state.Name, link.ToState, link.Tag.ToString());
 
-                    var newLink = new DiagramEdge()
+                    // create reverse links to all links defined in the remote state
+                    if (remoteState != null && remoteState.ToPreviousState)
                     {
-                        source = state.Name,
-                        target = link.ToState,
-                        label = link.Tag
-                    };
-
-                    try
-                    {
-                        _diagramJson.AddEdge(newLink);
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show(ex.Message);
-                    }
-
-                    // create reverse links to all links defined
-                    if (s != null && s.ToPreviousState)
-                    {
-                        tag.Description = "To_previous_state";
-                        CreateLink(diagram, link.ToState, state.Name, tag, true);
-
-                        var retLink = new DiagramEdge()
+                        var newReturnLink = new StateLink
                         {
-                            source = link.ToState,
-                            target = state.Name,
-                            label = link.Tag
+                            FileName = remoteState.ToPreviousStateTag.FileName,
+                            JsonPath = remoteState.ToPreviousStateTag.JsonPath,
+                            ToState = state.Name,
+                            Tag = remoteState.ToPreviousStateTag
                         };
 
-                        try
-                        {
-                            _diagramJson.AddEdge(retLink);
-                        }
-                        catch (Exception ex)
-                        {
-                            MessageBox.Show(ex.Message);
-                        }
+                        remoteState.LinksTo.Add(newReturnLink);
+
+                        tag.Description = "Return_to_previous_state";
+                        CreateLink(diagram, link.ToState, state.Name, tag, true);
+                        AddEdgeToJson(link.ToState, state.Name, link.Tag.ToString());
                     }
                 }
             }
@@ -756,8 +712,42 @@ namespace StatesDiagram
             }
         }
 
+        void ColorizeStates(Diagram diagram, List<ParsedState> states)
+        {
+            var shapes = diagram.Shapes;
+            var allLinks = states.SelectMany(n => n.LinksTo.Select(m => m.ToState));
+            var fillStyle = project1.Repository.GetDesigns().FirstOrDefault().FillStyles;
+
+            // подсветить зеленым стейты, из которых только выходы (начальные)
+            var startingBlocks = states.Where(n => !allLinks.Contains(n.Name));
+            foreach (var state in states)
+            {
+                if (states.Any(n => n.LinksTo.Any(m => m.ToState == state.Name)))
+                    startingBlocks.Append(state);
+            }
+
+            foreach (var block in startingBlocks)
+            {
+                block.Tag.Color = "Green";
+                var shape = shapes.FirstOrDefault(n => n is CaptionedShapeBase shapeObject && shapeObject.GetCaptionText(0) == block.Name);
+                ((CaptionedShapeBase)shape).FillStyle = fillStyle.Green;
+            }
+
+            // подсветить желтым стейты, в которые идут только входы (конечные)
+            var endingBlocks = states.Where(n => n.LinksTo == null || n.LinksTo.Count == 0);
+            foreach (var block in endingBlocks)
+            {
+                block.Tag.Color = "Yellow";
+                var shape = shapes.FirstOrDefault(n => n is RectangleBase sss && sss.GetCaptionText(0) == block.Name);
+                ((RectangleBase)shape).FillStyle = fillStyle.Yellow;
+            }
+        }
+
         void RefreshLayout()
         {
+            if (display1 == null || display1.Diagram == null || display1.Diagram.Shapes == null)
+                return;
+
             // First, place all shapes to the same position
             foreach (Shape s in display1.Diagram.Shapes)
             {
@@ -807,8 +797,14 @@ namespace StatesDiagram
             };
 
             // Now prepare and execute the layouter
-            layouter.Prepare();
-            layouter.Execute(10);
+            try
+            {
+                layouter.Prepare();
+                layouter.Execute(30);
+            }
+            catch
+            { }
+
             // Fit the result into the diagram bounds
             layouter.Fit(_initX, _initY, display1.Diagram.Width - _initW - _initX, display1.Diagram.Height - _initH - _initY);
         }
@@ -896,6 +892,35 @@ namespace StatesDiagram
                 textEditor.Text = longFileName;
 
             textEditor.HighlightPathJson(jsonPath);
+        }
+
+        private void AddNodeToJson(string nodeName, string labelText)
+        {
+            var newNode = new DiagramNode()
+            {
+                stringId = nodeName,
+                label = labelText
+            };
+            _diagramJson.AddNode(newNode);
+        }
+
+        private void AddEdgeToJson(string sourceName, string targetName, string labelText)
+        {
+            var retLink = new DiagramEdge()
+            {
+                source = sourceName,
+                target = targetName,
+                label = labelText
+            };
+
+            try
+            {
+                _diagramJson.AddEdge(retLink);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
         }
 
         private void VsCodeOpenFile(string command)

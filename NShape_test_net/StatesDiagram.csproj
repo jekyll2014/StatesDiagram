@@ -25,8 +25,8 @@
     <UpdateRequired>false</UpdateRequired>
     <MapFileExtensions>false</MapFileExtensions>
     <OpenBrowserOnPublish>false</OpenBrowserOnPublish>
-    <ApplicationRevision>2</ApplicationRevision>
-    <ApplicationVersion>1.0.0.2</ApplicationVersion>
+    <ApplicationRevision>3</ApplicationRevision>
+    <ApplicationVersion>1.0.0.3</ApplicationVersion>
     <UseApplicationTrust>false</UseApplicationTrust>
     <PublishWizardCompleted>true</PublishWizardCompleted>
     <BootstrapperEnabled>false</BootstrapperEnabled>
@@ -63,18 +63,10 @@
     <SignManifests>true</SignManifests>
   </PropertyGroup>
   <PropertyGroup>
-    <StartupObject>StatesDiagram.Program</StartupObject>
+    <StartupObject>
+    </StartupObject>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Dataweb.NShape, Version=2.3.1.0, Culture=neutral, PublicKeyToken=1512080cd664963c, processorArchitecture=MSIL">
-      <HintPath>..\packages\NShape.Core.2.3.1\lib\net40\Dataweb.NShape.dll</HintPath>
-    </Reference>
-    <Reference Include="Dataweb.NShape.GeneralShapes, Version=2.3.1.0, Culture=neutral, PublicKeyToken=1512080cd664963c, processorArchitecture=MSIL">
-      <HintPath>..\packages\NShape.Shapes.General.2.3.1\lib\net40\Dataweb.NShape.GeneralShapes.dll</HintPath>
-    </Reference>
-    <Reference Include="Dataweb.NShape.WinFormsUI, Version=2.3.1.0, Culture=neutral, PublicKeyToken=1512080cd664963c, processorArchitecture=MSIL">
-      <HintPath>..\packages\NShape.WinFormsUI.2.3.1\lib\net40\Dataweb.NShape.WinFormsUI.dll</HintPath>
-    </Reference>
     <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>..\packages\Newtonsoft.Json.13.0.1\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
@@ -93,12 +85,14 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DiagramExport.cs" />
     <Compile Include="Form1.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Form1.Designer.cs">
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
+    <Compile Include="ParsedState.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="Form1.resx">
@@ -137,6 +131,18 @@
     <ProjectReference Include="..\JsonPathParserLib\JsonPathParserLib.csproj">
       <Project>{B1257AF7-EE0B-4437-A812-829273393D04}</Project>
       <Name>JsonPathParserLib</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\NShape\Source\Core\NShape.csproj">
+      <Project>{9efe1059-e2dc-4576-b9e3-4ae3f998cb28}</Project>
+      <Name>NShape</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\NShape\Source\GeneralShapes\GeneralShapes.csproj">
+      <Project>{1272f77e-d926-4310-ae8b-858909b10f0c}</Project>
+      <Name>GeneralShapes</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\NShape\Source\WinFormsUI\WinFormsUI.csproj">
+      <Project>{5eab131c-1c93-4c3f-a1d8-d711053de33c}</Project>
+      <Name>WinFormsUI</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

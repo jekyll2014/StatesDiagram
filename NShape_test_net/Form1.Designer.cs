@@ -91,7 +91,7 @@ namespace StatesDiagram
             this.display1.SelectionInactiveColor = System.Drawing.Color.Gray;
             this.display1.SelectionInteriorColor = System.Drawing.Color.WhiteSmoke;
             this.display1.SelectionNormalColor = System.Drawing.Color.DarkGreen;
-            this.display1.ShowScrollBars = true;
+            this.display1.ScrollBarsVisible = true;
             this.display1.Size = new System.Drawing.Size(800, 450);
             this.display1.TabIndex = 0;
             this.display1.ToolPreviewBackColor = System.Drawing.Color.FromArgb(((int)(((byte)(64)))), ((int)(((byte)(119)))), ((int)(((byte)(136)))), ((int)(((byte)(153)))));
