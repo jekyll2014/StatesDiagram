@@ -185,7 +185,7 @@ namespace JsonPathParserLib
                     pos = tmpStr.ToString().IndexOf('[', pos + 2);
                 }
 
-                var newProperty = new ParsedProperty
+                var newProperty = new ParsedProperty(JsonPathDivider)
                 {
                     Name = property.Name,
                     Path = tmpStr.ToString(),
@@ -193,8 +193,7 @@ namespace JsonPathParserLib
                     EndPosition = property.EndPosition,
                     StartPosition = property.StartPosition,
                     Value = property.Value,
-                    ValueType = property.ValueType,
-                    PathDivider = JsonPathDivider
+                    ValueType = property.ValueType
                 };
 
                 result.Add(newProperty);
@@ -325,7 +324,7 @@ namespace JsonPathParserLib
                 }
             }
 
-            var newElement = new ParsedProperty
+            var newElement = new ParsedProperty(JsonPathDivider)
             {
                 JsonPropertyType = JsonPropertyType.Comment,
                 StartPosition = pos,
@@ -438,7 +437,7 @@ namespace JsonPathParserLib
                 }
             }
 
-            var newElement = new ParsedProperty
+            var newElement = new ParsedProperty(JsonPathDivider)
             {
                 StartPosition = pos
             };
@@ -596,7 +595,7 @@ namespace JsonPathParserLib
                 }
             }
 
-            var newElement = new ParsedProperty
+            var newElement = new ParsedProperty(JsonPathDivider)
             {
                 StartPosition = pos
             };
@@ -826,7 +825,8 @@ namespace JsonPathParserLib
                 }
             }
 
-            var newElement = new ParsedProperty();
+            var newElement = new ParsedProperty(JsonPathDivider);
+
             if (save)
             {
                 newElement.StartPosition = pos;

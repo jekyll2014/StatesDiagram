@@ -62,7 +62,7 @@ namespace StatesDiagram
         // JSON parser settings
         private JsonPathParser _parser = new JsonPathParser();
         private const string RootName = "";
-        private const char _pathDivider = '.';
+        private const char _pathDivider = '\\';
 
         // graph structure storege for JSON export
         private DiagramExport _diagramJson = new DiagramExport();

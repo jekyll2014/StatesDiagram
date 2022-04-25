@@ -21,6 +21,12 @@
         }
 
         private string _parentPath;
+
+        public ParsedProperty(char pathDivider)
+        {
+            PathDivider = pathDivider;
+        }
+
         public string ParentPath
         {
             get
